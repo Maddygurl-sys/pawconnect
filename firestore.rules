@@ -1,0 +1,116 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: pets
+    // Document ID: auto-generated or pet identifier
+    // Fields:
+    //   - petName: string | null (optional, 0-100 chars) - Name of the pet
+    //   - breed: string | null (optional, 0-100 chars) - Pet breed
+    //   - age: string | number | null (optional, string <= 50 chars or number 0-100) - Pet age
+    //   - gender: string | null (optional, 0-50 chars) - Pet gender (e.g., Male, Female)
+    //   - location: string | null (optional, 0-200 chars) - City / location of the pet
+    //   - contact: string | null (optional, 0-100 chars) - Phone / contact info
+    //   - description: string | null (optional, 0-5000 chars) - Description details
+    //   - imageUrl: string | null (optional, 0-2000 chars) - Public image URL
+    //   - dropboxPath: string | null (optional, 0-1000 chars) - Dropbox storage path
+    //   - ownerId: string | null (optional, 0-200 chars) - Auth0 user identifier (sub)
+    //   - ownerEmail: string | null (optional, 0-200 chars) - Auth0 user email address
+    //   - userId: string | null (optional, 0-200 chars) - Legacy user identifier field
+    //   - email: string | null (optional, 0-200 chars) - Legacy user email address field
+    //   - isAdopted: bool | null (optional) - Pet adoption status
+    //   - adoptedBy: string | null (optional, 0-200 chars) - Adopter user identifier / email
+    //   - adoptedAt: timestamp | string | null (optional, 0-100 chars) - Adoption timestamp or ISO string
+    //   - createdAt: timestamp | string | null (optional, 0-100 chars) - Creation timestamp
+    //   - updatedAt: timestamp | string | null (optional, 0-100 chars) - Update timestamp
+    //   - firebaseId: string | null (optional, 0-100 chars) - Optional copy of document ID
+    //   - id: string | null (optional, 0-100 chars) - Optional copy of document ID
+    //   - _id: string | null (optional, 0-100 chars) - Optional MongoDB identifier
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function hasOnlyAllowedPetFields() {
+      return request.resource.data.keys().hasOnly([
+        'petName',
+        'breed',
+        'age',
+        'gender',
+        'location',
+        'contact',
+        'description',
+        'imageUrl',
+        'dropboxPath',
+        'ownerId',
+        'ownerEmail',
+        'userId',
+        'email',
+        'isAdopted',
+        'adoptedBy',
+        'adoptedAt',
+        'createdAt',
+        'updatedAt',
+        'firebaseId',
+        'id',
+        '_id'
+      ]);
+    }
+
+    function isValidUrl(url) {
+      return url is string &&
+             url.size() <= 2000 &&
+             (url == '' || url.matches('^https?://.*') || url.matches('^blob:.*') || url.matches('^data:image/.*'));
+    }
+
+    function isValidPet(data) {
+      return hasOnlyAllowedPetFields() &&
+        // Pet name (string <= 100 chars or null)
+        (!('petName' in data) || data.petName == null || (data.petName is string && data.petName.size() <= 100)) &&
+
+        // Optional fields with null support and strict type/size constraints
+        (!('breed' in data) || data.breed == null || (data.breed is string && data.breed.size() <= 100)) &&
+        (!('age' in data) || data.age == null || (data.age is string && data.age.size() <= 50) || (data.age is number && data.age >= 0 && data.age <= 100)) &&
+        (!('gender' in data) || data.gender == null || (data.gender is string && data.gender.size() <= 50)) &&
+        (!('location' in data) || data.location == null || (data.location is string && data.location.size() <= 200)) &&
+        (!('contact' in data) || data.contact == null || (data.contact is string && data.contact.size() <= 100)) &&
+        (!('description' in data) || data.description == null || (data.description is string && data.description.size() <= 5000)) &&
+        (!('imageUrl' in data) || data.imageUrl == null || isValidUrl(data.imageUrl)) &&
+        (!('dropboxPath' in data) || data.dropboxPath == null || (data.dropboxPath is string && data.dropboxPath.size() <= 1000)) &&
+        (!('ownerId' in data) || data.ownerId == null || (data.ownerId is string && data.ownerId.size() <= 200)) &&
+        (!('ownerEmail' in data) || data.ownerEmail == null || (data.ownerEmail is string && data.ownerEmail.size() <= 200)) &&
+        (!('userId' in data) || data.userId == null || (data.userId is string && data.userId.size() <= 200)) &&
+        (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 200)) &&
+        (!('isAdopted' in data) || data.isAdopted == null || data.isAdopted is bool) &&
+        (!('adoptedBy' in data) || data.adoptedBy == null || (data.adoptedBy is string && data.adoptedBy.size() <= 200)) &&
+        (!('adoptedAt' in data) || data.adoptedAt == null || data.adoptedAt is timestamp || (data.adoptedAt is string && data.adoptedAt.size() <= 100)) &&
+        (!('createdAt' in data) || data.createdAt == null || data.createdAt is timestamp || (data.createdAt is string && data.createdAt.size() <= 100)) &&
+        (!('updatedAt' in data) || data.updatedAt == null || data.updatedAt is timestamp || (data.updatedAt is string && data.updatedAt.size() <= 100)) &&
+        (!('firebaseId' in data) || data.firebaseId == null || (data.firebaseId is string && data.firebaseId.size() <= 100)) &&
+        (!('id' in data) || data.id == null || (data.id is string && data.id.size() <= 100)) &&
+        (!('_id' in data) || data._id == null || (data._id is string && data._id.size() <= 100));
+    }
+
+    // Default deny for all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Rules for pets collection
+    // Note: The application uses Auth0 for user management and authentication on the client side,
+    // so incoming Firebase client requests are unauthenticated (request.auth is null).
+    match /pets/{petId} {
+      allow read: if true;
+      allow create: if isValidPet(request.resource.data);
+      allow update: if isValidPet(request.resource.data);
+      allow delete: if true;
+    }
+  }
+}
